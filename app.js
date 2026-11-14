@@ -41,7 +41,7 @@ const els = Object.fromEntries(['patternGrid', 'quickStart', 'viewPatterns', 'qu
 const COOLDOWN_ROUNDS = 5;
 const ROUND_SECONDS = 180;
 
-let state = { pattern: null, bank: [], questions: [], index: 0, score: 0, answers: [], seconds: ROUND_SECONDS, timer: null, roundNumber: 0, finished: false };
+let state = { pattern: null, bank: [], questions: [], index: 0, score: 0, answers: [], seconds: ROUND_SECONDS, timer: null, roundNumber: 0, finished: false, selectedChoice: null, answerSubmitted: false };
 const storageKey = 'mathQuestStudents';
 const currentStudentKey = 'mathQuestCurrentStudent';
 
@@ -169,19 +169,30 @@ function renderQuestion() {
     els.questionText.textContent = item.text;
     els.questionProgress.textContent = `Question ${state.index + 1}`;
     els.options.innerHTML = shuffle(item.choices).map((choice, i) => `<button class="option" data-choice="${encodeURIComponent(choice)}"><span class="option-letter">${String.fromCharCode(65 + i)}</span>${choice}</button>`).join('');
-    document.querySelectorAll('.option').forEach(b => b.onclick = () => chooseAnswer(decodeURIComponent(b.dataset.choice), b));
+    document.querySelectorAll('.option').forEach(b => b.onclick = () => selectAnswer(decodeURIComponent(b.dataset.choice), b));
     els.feedback.hidden = true;
     els.hintBox.hidden = true;
     els.hintBox.textContent = item.hint;
     els.hintButton.textContent = '💡 Show hint';
     els.nextButton.disabled = true;
-    els.nextButton.innerHTML = 'Next question <span>→</span>';
+    els.nextButton.innerHTML = 'Submit answer <span>✓</span>';
     els.coachText.textContent = state.index === 0 ? 'Look for the relationship hiding in the numbers before you calculate.' : 'Use the hint if you need a nudge, then explain the move to yourself.';
     els.scoreText.textContent = state.score;
 }
 
-function chooseAnswer(choice, button) {
+function selectAnswer(choice, button) {
+    if (state.answerSubmitted) return;
+    document.querySelectorAll('.option').forEach(option => option.classList.remove('selected'));
+    button.classList.add('selected');
+    state.selectedChoice = choice;
+    els.nextButton.disabled = false;
+}
+
+function chooseAnswer() {
+    const choice = state.selectedChoice;
     const item = state.questions[state.index];
+    const button = [...document.querySelectorAll('.option')].find(option => decodeURIComponent(option.dataset.choice) === choice);
+    state.answerSubmitted = true;
     document.querySelectorAll('.option').forEach(b => b.disabled = true);
     const correct = choice === item.answer;
     if (correct) {
@@ -194,7 +205,7 @@ function chooseAnswer(choice, button) {
         els.feedback.innerHTML = `<strong>Good try.</strong> The correct answer is ${item.answer}. ${item.solution}`;
     }
     els.feedback.hidden = false;
-    els.nextButton.disabled = false;
+    els.nextButton.innerHTML = state.index + 1 >= state.questions.length ? 'Finish sprint <span>→</span>' : 'Next question <span>→</span>';
     els.scoreText.textContent = state.score;
     state.answers.push({ item, choice, correct });
 }
@@ -207,6 +218,10 @@ els.hintButton.onclick = () => {
 // Each question in the selected bank is served once per round. Do not cycle
 // the small banks into duplicate questions.
 els.nextButton.onclick = () => {
+    if (!state.answerSubmitted) {
+        chooseAnswer();
+        return;
+    }
     state.index++;
     if (state.index >= state.questions.length) {
         finishQuiz(false);

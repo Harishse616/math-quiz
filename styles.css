@@ -545,6 +545,12 @@ button {
     transform: translateX(2px)
 }
 
+.option.selected {
+    background: #fff3d4;
+    border-color: var(--coral);
+    box-shadow: 0 0 0 2px rgba(239, 118, 95, .15)
+}
+
 .option:disabled {
     cursor: default
 }
@@ -581,6 +587,11 @@ button {
 .wrong .option-letter {
     background: #ffc6b9;
     color: #b84f3e
+}
+
+.selected .option-letter {
+    background: #ffd89a;
+    color: #9c5c1f
 }
 
 .feedback {
