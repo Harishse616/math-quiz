@@ -60,16 +60,24 @@ function setView(element, visible, display = 'block') {
 
 function questionId(patternId, index) { return `${patternId}-${index}` }
 
-function availableQuestions(patternId, roundNumber) {
+function availableQuestions(roundNumber) {
     const student = currentStudent();
-    const all = banks[patternId].map((item, index) => ({ ...item, questionId: questionId(patternId, index) }));
+    const all = patterns.flatMap(pattern => banks[pattern.id].map((item, index) => ({
+        ...item,
+        patternId: pattern.id,
+        questionId: questionId(pattern.id, index)
+    })));
     const fresh = all.filter(item => {
         const lastRound = student.questionHistory[item.questionId]?.lastRound;
         return !lastRound || roundNumber - lastRound >= COOLDOWN_ROUNDS;
     });
-    if (fresh.length) return fresh;
-    // Everything is cooling down: fall back to the least recently seen questions.
-    return all.sort((a, b) => (student.questionHistory[a.questionId]?.lastRound || 0) - (student.questionHistory[b.questionId]?.lastRound || 0));
+    const cooling = all.filter(item => !fresh.includes(item)).sort((a, b) => {
+        const aRound = student.questionHistory[a.questionId]?.lastRound || 0;
+        const bRound = student.questionHistory[b.questionId]?.lastRound || 0;
+        return aRound - bRound;
+    });
+    // Keep the full bank so a round cannot repeat before every question is shown.
+    return [...fresh, ...cooling];
 }
 
 function showLibrary() {
@@ -122,15 +130,15 @@ function startQuiz(id) {
     const student = currentStudent();
     if (!student) { setView(els.accountGate, true, 'grid'); return }
     const roundNumber = student.rounds.length + 1;
-    const bank = availableQuestions(id, roundNumber);
+    const bank = availableQuestions(roundNumber);
     clearInterval(state.timer);
     state = { pattern: patterns.find(p => p.id === id), bank, questions: shuffle(bank), index: 0, score: 0, answers: [], seconds: ROUND_SECONDS, timer: null, roundNumber, finished: false };
     setView(document.querySelector('main'), false);
     setView(els.resultsView, false);
     setView(els.quizView, true, 'block');
-    els.quizKicker.textContent = `Pattern ${String(id).padStart(2, '0')}`;
-    els.quizPatternName.textContent = state.pattern.title;
-    els.patternResult.textContent = state.pattern.title;
+    els.quizKicker.textContent = '3-minute sprint';
+    els.quizPatternName.textContent = 'Mixed pattern practice';
+    els.patternResult.textContent = 'Mixed sprint';
     renderQuestion();
     startTimer();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -196,15 +204,13 @@ els.hintButton.onclick = () => {
     els.hintButton.textContent = els.hintBox.hidden ? '💡 Show hint' : '▴ Hide hint';
 };
 
-// The quiz only ends when the timer runs out. When the bank is used up,
-// it is reshuffled and served again (never the same question twice in a row).
+// Each question in the selected bank is served once per round. Do not cycle
+// the small banks into duplicate questions.
 els.nextButton.onclick = () => {
     state.index++;
     if (state.index >= state.questions.length) {
-        const cycle = shuffle(state.bank);
-        const last = state.questions[state.questions.length - 1];
-        if (cycle.length > 1 && cycle[0].questionId === last.questionId) cycle.push(cycle.shift());
-        state.questions.push(...cycle);
+        finishQuiz(false);
+        return;
     }
     renderQuestion();
 };
@@ -215,17 +221,17 @@ function finishQuiz(timedOut) {
     clearInterval(state.timer);
     const student = currentStudent();
     if (student) {
-        const patternStats = student.patternStats[state.pattern.id] || { correct: 0, total: 0 };
         state.answers.forEach(result => {
             const item = result.item;
+            const patternStats = student.patternStats[item.patternId] || { correct: 0, total: 0 };
             const history = student.questionHistory[item.questionId] || { attempts: 0, correct: 0 };
             history.lastRound = state.roundNumber;
             history.attempts++;
             if (result.correct) { history.correct++; patternStats.correct++ }
             patternStats.total++;
             student.questionHistory[item.questionId] = history;
+            student.patternStats[item.patternId] = patternStats;
         });
-        student.patternStats[state.pattern.id] = patternStats;
         student.rounds.push({ patternId: state.pattern.id, score: state.score, total: state.answers.length, accuracy: state.answers.length ? Math.round(state.score / state.answers.length * 100) : 0, at: new Date().toISOString() });
         saveCurrentStudent(student);
     }
@@ -235,8 +241,10 @@ function finishQuiz(timedOut) {
     els.accuracy.textContent = `${state.answers.length ? Math.round(state.score / state.answers.length * 100) : 0}%`;
     const used = ROUND_SECONDS - state.seconds;
     els.timeUsed.textContent = `${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')}`;
-    els.resultTitle.textContent = 'Time is up!';
-    els.resultSubtitle.textContent = `You answered ${state.answers.length} question${state.answers.length === 1 ? '' : 's'} before the clock ended.`;
+    els.resultTitle.textContent = timedOut ? 'Time is up!' : 'Round complete!';
+    els.resultSubtitle.textContent = timedOut
+        ? `You answered ${state.answers.length} question${state.answers.length === 1 ? '' : 's'} before the clock ended.`
+        : `You answered all ${state.answers.length} questions in this pattern.`;
     els.reviewList.innerHTML = state.answers.map((a, i) => `<div class="review-item"><span class="review-status">${a.correct ? '✓' : '○'}</span><p><strong>Q${i + 1}.</strong> ${a.item.text}</p><small>${a.correct ? 'Correct' : 'Review'}</small></div>`).join('');
     renderProgress();
     window.scrollTo({ top: 0, behavior: 'smooth' });
