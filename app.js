@@ -164,6 +164,8 @@ function renderTimer() {
 
 function renderQuestion() {
     const item = state.questions[state.index];
+    state.selectedChoice = null;
+    state.answerSubmitted = false;
     els.questionNumber.textContent = `QUESTION ${String(state.index + 1).padStart(2, '0')}`;
     els.difficulty.textContent = item.level;
     els.questionText.textContent = item.text;
